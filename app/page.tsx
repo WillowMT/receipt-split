@@ -119,15 +119,24 @@ export default function ReceiptSplitter() {
 
   const shortenUrl = async (url: string): Promise<string> => {
     try {
-      if (!url.startsWith("http://") && !url.startsWith("https://")) {
-        url = `https://${url}`
+      const response = await fetch("/api/shorten", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to shorten URL")
       }
-      const response = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(url)}`)
+
       const data = await response.json()
-      if (data.shorturl) {
-        return data.shorturl
+      if (data.shortUrl) {
+        return data.shortUrl
       }
-      throw new Error(data.errormessage || "Failed to shorten URL")
+
+      throw new Error("Invalid response from server")
     } catch (error) {
       console.error("Failed to shorten URL:", error)
       return url

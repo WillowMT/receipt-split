@@ -7,8 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Trash2, Plus, Users, ReceiptIcon, Share2, Check } from "lucide-react"
+import { Trash2, Plus, Users, ReceiptIcon, Share2, Check, Lock, Unlock } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface Person {
   id: string
@@ -34,6 +35,19 @@ const COLORS = [
   "bg-red-500",
 ]
 
+const CURRENCIES = [
+  { value: "$", label: "$ USD" },
+  { value: "€", label: "€ EUR" },
+  { value: "£", label: "£ GBP" },
+  { value: "¥", label: "¥ JPY" },
+  { value: "₹", label: "₹ INR" },
+  { value: "₱", label: "₱ PHP" },
+  { value: "R$", label: "R$ BRL" },
+  { value: "C$", label: "C$ CAD" },
+  { value: "A$", label: "A$ AUD" },
+  { value: "₩", label: "₩ KRW" },
+]
+
 export default function ReceiptSplitter() {
   const [people, setPeople] = useState<Person[]>([])
   const [items, setItems] = useState<Item[]>([])
@@ -43,6 +57,8 @@ export default function ReceiptSplitter() {
   const [tipPercentage, setTipPercentage] = useState("0")
   const [tax, setTax] = useState("0")
   const [copied, setCopied] = useState(false)
+  const [isLocked, setIsLocked] = useState(false)
+  const [currency, setCurrency] = useState("$")
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -55,6 +71,8 @@ export default function ReceiptSplitter() {
         setItems(decoded.items || [])
         setTipPercentage(decoded.tipPercentage || "0")
         setTax(decoded.tax || "0")
+        setIsLocked(decoded.isLocked || false)
+        setCurrency(decoded.currency || "$")
       } catch (error) {
         console.error("Failed to load shared receipt:", error)
       }
@@ -67,6 +85,8 @@ export default function ReceiptSplitter() {
       items,
       tipPercentage,
       tax,
+      isLocked,
+      currency,
     }
     const encoded = btoa(encodeURIComponent(JSON.stringify(data)))
     const url = `${window.location.origin}${window.location.pathname}?data=${encoded}`
@@ -85,6 +105,7 @@ export default function ReceiptSplitter() {
   }
 
   const addPerson = () => {
+    if (isLocked) return
     if (newPersonName.trim()) {
       const newPerson: Person = {
         id: Date.now().toString(),
@@ -97,6 +118,7 @@ export default function ReceiptSplitter() {
   }
 
   const removePerson = (id: string) => {
+    if (isLocked) return
     setPeople(people.filter((p) => p.id !== id))
     setItems(
       items.map((item) => ({
@@ -107,6 +129,7 @@ export default function ReceiptSplitter() {
   }
 
   const addItem = () => {
+    if (isLocked) return
     if (newItemName.trim() && newItemPrice && !isNaN(Number.parseFloat(newItemPrice))) {
       const newItem: Item = {
         id: Date.now().toString(),
@@ -121,10 +144,12 @@ export default function ReceiptSplitter() {
   }
 
   const removeItem = (id: string) => {
+    if (isLocked) return
     setItems(items.filter((item) => item.id !== id))
   }
 
   const togglePersonForItem = (itemId: string, personId: string) => {
+    if (isLocked) return
     setItems(
       items.map((item) => {
         if (item.id === itemId) {
@@ -166,8 +191,35 @@ export default function ReceiptSplitter() {
           </div>
           <p className="text-muted-foreground">Split bills fairly among friends</p>
 
-          {(people.length > 0 || items.length > 0) && (
-            <div className="mt-4 flex justify-center">
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <Button onClick={() => setIsLocked(!isLocked)} variant={isLocked ? "default" : "outline"} className="gap-2">
+              {isLocked ? (
+                <>
+                  <Lock className="h-4 w-4" />
+                  Locked
+                </>
+              ) : (
+                <>
+                  <Unlock className="h-4 w-4" />
+                  Unlocked
+                </>
+              )}
+            </Button>
+
+            <Select value={currency} onValueChange={setCurrency} disabled={isLocked}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CURRENCIES.map((curr) => (
+                  <SelectItem key={curr.value} value={curr.value}>
+                    {curr.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {(people.length > 0 || items.length > 0) && (
               <Button onClick={copyShareLink} variant="outline" className="gap-2 bg-transparent">
                 {copied ? (
                   <>
@@ -181,8 +233,8 @@ export default function ReceiptSplitter() {
                   </>
                 )}
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
@@ -204,8 +256,9 @@ export default function ReceiptSplitter() {
                     value={newPersonName}
                     onChange={(e) => setNewPersonName(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addPerson()}
+                    disabled={isLocked}
                   />
-                  <Button onClick={addPerson} size="icon">
+                  <Button onClick={addPerson} size="icon" disabled={isLocked}>
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
@@ -214,14 +267,16 @@ export default function ReceiptSplitter() {
                     <Badge key={person.id} variant="secondary" className="gap-2 pr-1">
                       <div className={`h-2 w-2 rounded-full ${person.color}`} />
                       {person.name}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-4 w-4 p-0"
-                        onClick={() => removePerson(person.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      {!isLocked && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4 p-0"
+                          onClick={() => removePerson(person.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                     </Badge>
                   ))}
                   {people.length === 0 && <p className="text-sm text-muted-foreground">No people added yet</p>}
@@ -242,6 +297,7 @@ export default function ReceiptSplitter() {
                     value={newItemName}
                     onChange={(e) => setNewItemName(e.target.value)}
                     className="flex-1"
+                    disabled={isLocked}
                   />
                   <Input
                     placeholder="Price"
@@ -251,8 +307,9 @@ export default function ReceiptSplitter() {
                     onChange={(e) => setNewItemPrice(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addItem()}
                     className="w-24"
+                    disabled={isLocked}
                   />
-                  <Button onClick={addItem} size="icon">
+                  <Button onClick={addItem} size="icon" disabled={isLocked}>
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
@@ -263,11 +320,16 @@ export default function ReceiptSplitter() {
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <div className="font-medium">{item.name}</div>
-                          <div className="text-sm text-muted-foreground">${item.price.toFixed(2)}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {currency}
+                            {item.price.toFixed(2)}
+                          </div>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => removeItem(item.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {!isLocked && (
+                          <Button variant="ghost" size="icon" onClick={() => removeItem(item.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                       {people.length > 0 && (
                         <div className="flex flex-wrap gap-2">
@@ -276,6 +338,7 @@ export default function ReceiptSplitter() {
                               <Checkbox
                                 checked={item.sharedBy.includes(person.id)}
                                 onCheckedChange={() => togglePersonForItem(item.id, person.id)}
+                                disabled={isLocked}
                               />
                               <span className="text-sm">{person.name}</span>
                             </label>
@@ -308,6 +371,7 @@ export default function ReceiptSplitter() {
                     value={tax}
                     onChange={(e) => setTax(e.target.value)}
                     placeholder="0"
+                    disabled={isLocked}
                   />
                 </div>
                 <div className="space-y-2">
@@ -320,14 +384,15 @@ export default function ReceiptSplitter() {
                       onChange={(e) => setTipPercentage(e.target.value)}
                       placeholder="0"
                       className="flex-1"
+                      disabled={isLocked}
                     />
-                    <Button variant="outline" onClick={() => setTipPercentage("15")} size="sm">
+                    <Button variant="outline" onClick={() => setTipPercentage("15")} size="sm" disabled={isLocked}>
                       15%
                     </Button>
-                    <Button variant="outline" onClick={() => setTipPercentage("18")} size="sm">
+                    <Button variant="outline" onClick={() => setTipPercentage("18")} size="sm" disabled={isLocked}>
                       18%
                     </Button>
-                    <Button variant="outline" onClick={() => setTipPercentage("20")} size="sm">
+                    <Button variant="outline" onClick={() => setTipPercentage("20")} size="sm" disabled={isLocked}>
                       20%
                     </Button>
                   </div>
@@ -343,20 +408,32 @@ export default function ReceiptSplitter() {
               <CardContent className="space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span>${subtotal.toFixed(2)}</span>
+                  <span>
+                    {currency}
+                    {subtotal.toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Tax ({tax}%)</span>
-                  <span>${taxAmount.toFixed(2)}</span>
+                  <span>
+                    {currency}
+                    {taxAmount.toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Tip ({tipPercentage}%)</span>
-                  <span>${tipAmount.toFixed(2)}</span>
+                  <span>
+                    {currency}
+                    {tipAmount.toFixed(2)}
+                  </span>
                 </div>
                 <Separator />
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total</span>
-                  <span>${total.toFixed(2)}</span>
+                  <span>
+                    {currency}
+                    {total.toFixed(2)}
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -376,7 +453,10 @@ export default function ReceiptSplitter() {
                         <div className={`h-3 w-3 rounded-full ${person.color}`} />
                         <span className="font-medium">{person.name}</span>
                       </div>
-                      <span className="font-mono text-lg font-semibold">${personTotal.toFixed(2)}</span>
+                      <span className="font-mono text-lg font-semibold">
+                        {currency}
+                        {personTotal.toFixed(2)}
+                      </span>
                     </div>
                   )
                 })}

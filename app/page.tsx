@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Trash2, Plus, Users, ReceiptIcon, Share2, Check, Lock, Unlock } from "lucide-react"
+import { Trash2, Plus, Users, ReceiptIcon, Share2, Check, Lock, Unlock, RotateCcw } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -102,6 +102,23 @@ export default function ReceiptSplitter() {
     } catch (error) {
       console.error("Failed to copy link:", error)
     }
+  }
+
+  const resetReceipt = () => {
+    if (isLocked) return
+    setPeople([])
+    setItems([])
+    setNewPersonName("")
+    setNewItemName("")
+    setNewItemPrice("")
+    setTipPercentage("0")
+    setTax("0")
+    setCurrency("$")
+    setCopied(false)
+
+    const url = new URL(window.location.href)
+    url.searchParams.delete("data")
+    window.history.replaceState({}, document.title, url.toString())
   }
 
   const addPerson = () => {
@@ -234,6 +251,11 @@ export default function ReceiptSplitter() {
                 )}
               </Button>
             )}
+
+            <Button onClick={resetReceipt} variant="destructive" className="gap-2" disabled={isLocked}>
+              <RotateCcw className="h-4 w-4" />
+              Reset
+            </Button>
           </div>
         </div>
 

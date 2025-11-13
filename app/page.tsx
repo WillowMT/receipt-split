@@ -7,10 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Trash2, Plus, Users, ReceiptIcon, Share2, Check, Lock, Unlock, RotateCcw, ChevronDown } from "lucide-react"
+import { Trash2, Plus, Users, ReceiptIcon, Share2, Check, Lock, Unlock, RotateCcw, ChevronDown, Eye } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Spinner } from "@/components/ui/spinner"
 
 interface Person {
   id: string
@@ -55,9 +56,11 @@ export default function ReceiptSplitter() {
   const [newPersonName, setNewPersonName] = useState("")
   const [newItemName, setNewItemName] = useState("")
   const [newItemPrice, setNewItemPrice] = useState("")
-  const [tipPercentage, setTipPercentage] = useState("0")
   const [tax, setTax] = useState("0")
   const [copied, setCopied] = useState(false)
+  const [viewCopied, setViewCopied] = useState(false)
+  const [isLoadingShare, setIsLoadingShare] = useState(false)
+  const [isLoadingView, setIsLoadingView] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
   const [currency, setCurrency] = useState("$")
 
@@ -70,7 +73,6 @@ export default function ReceiptSplitter() {
         const decoded = JSON.parse(decodeURIComponent(atob(dataParam)))
         setPeople(decoded.people || [])
         setItems(decoded.items || [])
-        setTipPercentage(decoded.tipPercentage || "0")
         setTax(decoded.tax || "0")
         setIsLocked(decoded.isLocked || false)
         setCurrency(decoded.currency || "$")
@@ -80,28 +82,85 @@ export default function ReceiptSplitter() {
     }
   }, [])
 
+  const getBaseUrl = () => {
+    const origin = window.location.origin
+    if (origin.includes("localhost") || origin.includes("127.0.0.1")) {
+      return "https://receipt.waiyanmt.com"
+    }
+    return origin
+  }
+
   const generateShareLink = () => {
     const data = {
       people,
       items,
-      tipPercentage,
       tax,
       isLocked,
       currency,
     }
     const encoded = btoa(encodeURIComponent(JSON.stringify(data)))
-    const url = `${window.location.origin}${window.location.pathname}?data=${encoded}`
+    const baseUrl = getBaseUrl()
+    const url = `${baseUrl}${window.location.pathname}?data=${encoded}`
     return url
+  }
+
+  const generateViewLink = () => {
+    const data = {
+      people,
+      items,
+      tax,
+      currency,
+    }
+    const encoded = btoa(encodeURIComponent(JSON.stringify(data)))
+    const baseUrl = getBaseUrl()
+    const url = `${baseUrl}/view?data=${encoded}`
+    return url
+  }
+
+  const shortenUrl = async (url: string): Promise<string> => {
+    try {
+      if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        url = `https://${url}`
+      }
+      const response = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(url)}`)
+      const data = await response.json()
+      if (data.shorturl) {
+        return data.shorturl
+      }
+      throw new Error(data.errormessage || "Failed to shorten URL")
+    } catch (error) {
+      console.error("Failed to shorten URL:", error)
+      return url
+    }
   }
 
   const copyShareLink = async () => {
     try {
+      setIsLoadingShare(true)
       const link = generateShareLink()
-      await navigator.clipboard.writeText(link)
+      const shortLink = await shortenUrl(link)
+      await navigator.clipboard.writeText(shortLink)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
       console.error("Failed to copy link:", error)
+    } finally {
+      setIsLoadingShare(false)
+    }
+  }
+
+  const copyViewLink = async () => {
+    try {
+      setIsLoadingView(true)
+      const link = generateViewLink()
+      const shortLink = await shortenUrl(link)
+      await navigator.clipboard.writeText(shortLink)
+      setViewCopied(true)
+      setTimeout(() => setViewCopied(false), 2000)
+    } catch (error) {
+      console.error("Failed to copy view link:", error)
+    } finally {
+      setIsLoadingView(false)
     }
   }
 
@@ -112,10 +171,12 @@ export default function ReceiptSplitter() {
     setNewPersonName("")
     setNewItemName("")
     setNewItemPrice("")
-    setTipPercentage("0")
     setTax("0")
     setCurrency("$")
     setCopied(false)
+    setViewCopied(false)
+    setIsLoadingShare(false)
+    setIsLoadingView(false)
 
     const url = new URL(window.location.href)
     url.searchParams.delete("data")
@@ -183,8 +244,7 @@ export default function ReceiptSplitter() {
 
   const subtotal = items.reduce((sum, item) => sum + item.price, 0)
   const taxAmount = (subtotal * Number.parseFloat(tax || "0")) / 100
-  const tipAmount = ((subtotal + taxAmount) * Number.parseFloat(tipPercentage || "0")) / 100
-  const total = subtotal + taxAmount + tipAmount
+  const total = subtotal + taxAmount
 
   const calculatePersonBreakdown = (personId: string) => {
     const sharedItems = items.filter((item) => item.sharedBy.includes(personId) && item.sharedBy.length > 0)
@@ -195,14 +255,11 @@ export default function ReceiptSplitter() {
     }))
     const personSubtotal = itemShares.reduce((sum, entry) => sum + entry.amount, 0)
     const personTax = subtotal > 0 ? (personSubtotal / subtotal) * taxAmount : 0
-    const baseWithTax = subtotal + taxAmount
-    const personTip = baseWithTax > 0 ? ((personSubtotal + personTax) / baseWithTax) * tipAmount : 0
 
     return {
       items: itemShares,
       personSubtotal,
       personTax,
-      personTip,
     }
   }
 
@@ -246,19 +303,44 @@ export default function ReceiptSplitter() {
             </Select>
 
             {(people.length > 0 || items.length > 0) && (
-              <Button onClick={copyShareLink} variant="outline" className="gap-2 bg-transparent">
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Link Copied!
-                  </>
-                ) : (
-                  <>
-                    <Share2 className="h-4 w-4" />
-                    Share Receipt
-                  </>
-                )}
-              </Button>
+              <>
+                <Button onClick={copyShareLink} variant="outline" className="gap-2 bg-transparent" disabled={isLoadingShare}>
+                  {isLoadingShare ? (
+                    <>
+                      <Spinner className="h-4 w-4" />
+                      Loading...
+                    </>
+                  ) : copied ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Link Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="h-4 w-4" />
+                      Share Receipt
+                    </>
+                  )}
+                </Button>
+                <Button onClick={copyViewLink} variant="outline" className="gap-2 bg-transparent" disabled={isLoadingView}>
+                  {isLoadingView ? (
+                    <>
+                      <Spinner className="h-4 w-4" />
+                      Loading...
+                    </>
+                  ) : viewCopied ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Link Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-4 w-4" />
+                      View Only
+                    </>
+                  )}
+                </Button>
+              </>
             )}
 
             <Button onClick={resetReceipt} variant="destructive" className="gap-2" disabled={isLocked}>
@@ -388,7 +470,7 @@ export default function ReceiptSplitter() {
 
           {/* Right Column - Summary */}
           <div className="space-y-6">
-            {/* Tax & Tip */}
+            {/* Tax */}
             <Card>
               <CardHeader>
                 <CardTitle>Additional Charges</CardTitle>
@@ -404,29 +486,6 @@ export default function ReceiptSplitter() {
                     placeholder="0"
                     disabled={isLocked}
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label>Tip (%)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="number"
-                      step="1"
-                      value={tipPercentage}
-                      onChange={(e) => setTipPercentage(e.target.value)}
-                      placeholder="0"
-                      className="flex-1"
-                      disabled={isLocked}
-                    />
-                    <Button variant="outline" onClick={() => setTipPercentage("15")} size="sm" disabled={isLocked}>
-                      15%
-                    </Button>
-                    <Button variant="outline" onClick={() => setTipPercentage("18")} size="sm" disabled={isLocked}>
-                      18%
-                    </Button>
-                    <Button variant="outline" onClick={() => setTipPercentage("20")} size="sm" disabled={isLocked}>
-                      20%
-                    </Button>
-                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -451,13 +510,6 @@ export default function ReceiptSplitter() {
                     {taxAmount.toFixed(2)}
                   </span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Tip ({tipPercentage}%)</span>
-                  <span>
-                    {currency}
-                    {tipAmount.toFixed(2)}
-                  </span>
-                </div>
                 <Separator />
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total</span>
@@ -478,7 +530,7 @@ export default function ReceiptSplitter() {
               <CardContent className="space-y-3">
                 {people.map((person) => {
                   const breakdown = calculatePersonBreakdown(person.id)
-                  const personTotal = breakdown.personSubtotal + breakdown.personTax + breakdown.personTip
+                  const personTotal = breakdown.personSubtotal + breakdown.personTax
                   return (
                     <div key={person.id} className="space-y-3 rounded-lg border p-3">
                       <div className="flex items-center justify-between gap-3">
@@ -522,13 +574,6 @@ export default function ReceiptSplitter() {
                                 <span className="font-mono">
                                   {currency}
                                   {breakdown.personTax.toFixed(2)}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Tip share</span>
-                                <span className="font-mono">
-                                  {currency}
-                                  {breakdown.personTip.toFixed(2)}
                                 </span>
                               </div>
                             </div>

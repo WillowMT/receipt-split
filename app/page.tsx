@@ -7,9 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Trash2, Plus, Users, ReceiptIcon, Share2, Check, Lock, Unlock, RotateCcw } from "lucide-react"
+import { Trash2, Plus, Users, ReceiptIcon, Share2, Check, Lock, Unlock, RotateCcw, ChevronDown } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 interface Person {
   id: string
@@ -185,16 +186,24 @@ export default function ReceiptSplitter() {
   const tipAmount = ((subtotal + taxAmount) * Number.parseFloat(tipPercentage || "0")) / 100
   const total = subtotal + taxAmount + tipAmount
 
-  const calculatePersonTotal = (personId: string) => {
-    let personSubtotal = 0
-    items.forEach((item) => {
-      if (item.sharedBy.includes(personId) && item.sharedBy.length > 0) {
-        personSubtotal += item.price / item.sharedBy.length
-      }
-    })
-    const personTax = (personSubtotal / subtotal) * taxAmount || 0
-    const personTip = ((personSubtotal + personTax) / (subtotal + taxAmount)) * tipAmount || 0
-    return personSubtotal + personTax + personTip
+  const calculatePersonBreakdown = (personId: string) => {
+    const sharedItems = items.filter((item) => item.sharedBy.includes(personId) && item.sharedBy.length > 0)
+    const itemShares = sharedItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      amount: item.price / item.sharedBy.length,
+    }))
+    const personSubtotal = itemShares.reduce((sum, entry) => sum + entry.amount, 0)
+    const personTax = subtotal > 0 ? (personSubtotal / subtotal) * taxAmount : 0
+    const baseWithTax = subtotal + taxAmount
+    const personTip = baseWithTax > 0 ? ((personSubtotal + personTax) / baseWithTax) * tipAmount : 0
+
+    return {
+      items: itemShares,
+      personSubtotal,
+      personTax,
+      personTip,
+    }
   }
 
   return (
@@ -468,17 +477,72 @@ export default function ReceiptSplitter() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {people.map((person) => {
-                  const personTotal = calculatePersonTotal(person.id)
+                  const breakdown = calculatePersonBreakdown(person.id)
+                  const personTotal = breakdown.personSubtotal + breakdown.personTax + breakdown.personTip
                   return (
-                    <div key={person.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className={`h-3 w-3 rounded-full ${person.color}`} />
-                        <span className="font-medium">{person.name}</span>
+                    <div key={person.id} className="space-y-3 rounded-lg border p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`h-3 w-3 rounded-full ${person.color}`} />
+                          <span className="font-medium">{person.name}</span>
+                        </div>
+                        <span className="font-mono text-lg font-semibold">
+                          {currency}
+                          {personTotal.toFixed(2)}
+                        </span>
                       </div>
-                      <span className="font-mono text-lg font-semibold">
-                        {currency}
-                        {personTotal.toFixed(2)}
-                      </span>
+                      <div className="flex justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-8 gap-1">
+                              View breakdown
+                              <ChevronDown className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-64 space-y-3 p-3">
+                            <div className="space-y-2 text-sm">
+                              {breakdown.items.length > 0 ? (
+                                breakdown.items.map((item) => (
+                                  <div key={item.id} className="flex justify-between">
+                                    <span>{item.name}</span>
+                                    <span className="font-mono">
+                                      {currency}
+                                      {item.amount.toFixed(2)}
+                                    </span>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-muted-foreground">No items assigned.</p>
+                              )}
+                            </div>
+                            <Separator />
+                            <div className="space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span>Tax share</span>
+                                <span className="font-mono">
+                                  {currency}
+                                  {breakdown.personTax.toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Tip share</span>
+                                <span className="font-mono">
+                                  {currency}
+                                  {breakdown.personTip.toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                            <Separator />
+                            <div className="flex justify-between text-sm font-semibold">
+                              <span>Total due</span>
+                              <span className="font-mono">
+                                {currency}
+                                {personTotal.toFixed(2)}
+                              </span>
+                            </div>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                   )
                 })}

@@ -157,16 +157,86 @@ export default function ReceiptSplitter() {
     }
   }
 
+  const copyToClipboard = (text: string): boolean => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).catch(() => {
+          // Fall through to fallback method
+        })
+        return true
+      }
+    } catch (error) {
+      console.warn("Clipboard API failed, trying fallback:", error)
+    }
+
+    try {
+      const textArea = document.createElement("textarea")
+      textArea.value = text
+      textArea.style.position = "fixed"
+      textArea.style.left = "-999999px"
+      textArea.style.top = "-999999px"
+      textArea.style.opacity = "0"
+      textArea.setAttribute("readonly", "")
+      document.body.appendChild(textArea)
+
+      if (navigator.userAgent.match(/ipad|iphone/i)) {
+        const range = document.createRange()
+        range.selectNodeContents(textArea)
+        const selection = window.getSelection()
+        selection?.removeAllRanges()
+        selection?.addRange(range)
+        textArea.setSelectionRange(0, 999999)
+      } else {
+        textArea.select()
+      }
+
+      const successful = document.execCommand("copy")
+      document.body.removeChild(textArea)
+
+      return successful
+    } catch (error) {
+      console.error("Fallback copy method failed:", error)
+      return false
+    }
+  }
+
   const copyShareLink = async () => {
     try {
       setIsLoadingShare(true)
       const link = generateShareLink()
+
       const shortLink = await shortenUrl(link)
-      await navigator.clipboard.writeText(shortLink)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+
+      const success = copyToClipboard(shortLink)
+
+      if (success) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } else {
+        const input = document.createElement("input")
+        input.value = shortLink
+        input.style.position = "fixed"
+        input.style.opacity = "0"
+        input.style.pointerEvents = "none"
+        document.body.appendChild(input)
+        input.select()
+        input.setSelectionRange(0, 99999)
+
+        try {
+          document.execCommand("copy")
+          setCopied(true)
+          setTimeout(() => setCopied(false), 2000)
+        } catch {
+          prompt("Copy this link:", shortLink)
+        } finally {
+          document.body.removeChild(input)
+        }
+      }
     } catch (error) {
       console.error("Failed to copy link:", error)
+      const link = generateShareLink()
+      const shortLink = await shortenUrl(link)
+      prompt("Copy this link:", shortLink)
     } finally {
       setIsLoadingShare(false)
     }
@@ -176,12 +246,39 @@ export default function ReceiptSplitter() {
     try {
       setIsLoadingView(true)
       const link = generateViewLink()
+
       const shortLink = await shortenUrl(link)
-      await navigator.clipboard.writeText(shortLink)
-      setViewCopied(true)
-      setTimeout(() => setViewCopied(false), 2000)
+
+      const success = copyToClipboard(shortLink)
+
+      if (success) {
+        setViewCopied(true)
+        setTimeout(() => setViewCopied(false), 2000)
+      } else {
+        const input = document.createElement("input")
+        input.value = shortLink
+        input.style.position = "fixed"
+        input.style.opacity = "0"
+        input.style.pointerEvents = "none"
+        document.body.appendChild(input)
+        input.select()
+        input.setSelectionRange(0, 99999)
+
+        try {
+          document.execCommand("copy")
+          setViewCopied(true)
+          setTimeout(() => setViewCopied(false), 2000)
+        } catch {
+          prompt("Copy this link:", shortLink)
+        } finally {
+          document.body.removeChild(input)
+        }
+      }
     } catch (error) {
       console.error("Failed to copy view link:", error)
+      const link = generateViewLink()
+      const shortLink = await shortenUrl(link)
+      prompt("Copy this link:", shortLink)
     } finally {
       setIsLoadingView(false)
     }

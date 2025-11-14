@@ -125,18 +125,21 @@ export default function ReceiptSplitter() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ url }),
+        credentials: "same-origin",
       })
 
       if (!response.ok) {
-        throw new Error("Failed to shorten URL")
+        const errorText = await response.text()
+        console.error("API error:", errorText)
+        return url
       }
 
       const data = await response.json()
-      if (data.shortUrl) {
+      if (data && data.shortUrl) {
         return data.shortUrl
       }
 
-      throw new Error("Invalid response from server")
+      return url
     } catch (error) {
       console.error("Failed to shorten URL:", error)
       return url

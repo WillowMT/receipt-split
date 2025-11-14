@@ -119,6 +119,9 @@ export default function ReceiptSplitter() {
 
   const shortenUrl = async (url: string): Promise<string> => {
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 15000)
+
       const response = await fetch("/api/shorten", {
         method: "POST",
         headers: {
@@ -126,11 +129,15 @@ export default function ReceiptSplitter() {
         },
         body: JSON.stringify({ url }),
         credentials: "same-origin",
+        signal: controller.signal,
+        cache: "no-store",
       })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("API error:", errorText)
+        console.error("API error:", response.status, errorText)
         return url
       }
 
@@ -141,7 +148,11 @@ export default function ReceiptSplitter() {
 
       return url
     } catch (error) {
-      console.error("Failed to shorten URL:", error)
+      if (error instanceof Error && error.name === "AbortError") {
+        console.error("Request timeout while shortening URL")
+      } else {
+        console.error("Failed to shorten URL:", error)
+      }
       return url
     }
   }

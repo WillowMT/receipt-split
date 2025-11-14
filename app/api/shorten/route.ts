@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
+export const dynamic = "force-dynamic"
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -28,23 +30,44 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
+
       const response = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(targetUrl)}`, {
+        method: "GET",
         headers: {
-          "User-Agent": "Mozilla/5.0",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "application/json",
         },
+        signal: controller.signal,
+        cache: "no-store",
       })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const data = await response.json()
+      const text = await response.text()
+      let data
 
-      if (data.shorturl) {
+      try {
+        data = JSON.parse(text)
+      } catch (parseError) {
+        console.error("Failed to parse response:", text)
+        throw new Error("Invalid JSON response")
+      }
+
+      if (data && data.shorturl) {
         return NextResponse.json({ shortUrl: data.shorturl }, { headers: corsHeaders })
       }
     } catch (error) {
-      console.error("Failed to shorten URL:", error)
+      if (error instanceof Error && error.name === "AbortError") {
+        console.error("Request timeout")
+      } else {
+        console.error("Failed to shorten URL:", error)
+      }
     }
 
     return NextResponse.json({ shortUrl: targetUrl }, { headers: corsHeaders })

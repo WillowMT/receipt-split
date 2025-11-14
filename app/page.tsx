@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Trash2, Plus, Users, ReceiptIcon, Share2, Check, Lock, Unlock, RotateCcw, ChevronDown, Eye } from "lucide-react"
+import { Trash2, Plus, Users, ReceiptIcon, Share2, Check, Lock, Unlock, RotateCcw, ChevronDown, Eye, X, Copy } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -50,6 +50,81 @@ const CURRENCIES = [
   { value: "₩", label: "₩ KRW" },
 ]
 
+function LinkCopyModal({ link, onClose, onCopySuccess }: { link: string; onClose: () => void; onCopySuccess: () => void }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [link])
+
+  const handleCopy = async () => {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(link)
+        onCopySuccess()
+        return
+      } catch (error) {
+        console.warn("Clipboard API failed:", error)
+      }
+    }
+
+    try {
+      const textArea = document.createElement("textarea")
+      textArea.value = link
+      textArea.style.position = "fixed"
+      textArea.style.left = "-999999px"
+      textArea.style.top = "-999999px"
+      textArea.style.opacity = "0"
+      document.body.appendChild(textArea)
+      textArea.select()
+      const successful = document.execCommand("copy")
+      document.body.removeChild(textArea)
+      if (successful) {
+        onCopySuccess()
+      }
+    } catch (error) {
+      console.error("Copy failed:", error)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Copy Link</CardTitle>
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <CardDescription>Select and copy the link below</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              ref={inputRef}
+              value={link}
+              readOnly
+              className="font-mono text-sm"
+              onFocus={(e) => e.target.select()}
+              onClick={(e) => e.currentTarget.select()}
+            />
+            <Button size="icon" onClick={handleCopy}>
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Tap the input field to select all, or use the copy button
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 export default function ReceiptSplitter() {
   const [people, setPeople] = useState<Person[]>([])
   const [items, setItems] = useState<Item[]>([])
@@ -63,6 +138,7 @@ export default function ReceiptSplitter() {
   const [isLoadingView, setIsLoadingView] = useState(false)
   const [isLocked, setIsLocked] = useState(false)
   const [currency, setCurrency] = useState("$")
+  const [linkToCopy, setLinkToCopy] = useState<string | null>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -157,12 +233,10 @@ export default function ReceiptSplitter() {
     }
   }
 
-  const copyToClipboard = (text: string): boolean => {
+  const copyToClipboard = async (text: string): Promise<boolean> => {
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).catch(() => {
-          // Fall through to fallback method
-        })
+        await navigator.clipboard.writeText(text)
         return true
       }
     } catch (error) {
@@ -204,39 +278,21 @@ export default function ReceiptSplitter() {
     try {
       setIsLoadingShare(true)
       const link = generateShareLink()
-
       const shortLink = await shortenUrl(link)
 
-      const success = copyToClipboard(shortLink)
+      const success = await copyToClipboard(shortLink)
 
       if (success) {
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
       } else {
-        const input = document.createElement("input")
-        input.value = shortLink
-        input.style.position = "fixed"
-        input.style.opacity = "0"
-        input.style.pointerEvents = "none"
-        document.body.appendChild(input)
-        input.select()
-        input.setSelectionRange(0, 99999)
-
-        try {
-          document.execCommand("copy")
-          setCopied(true)
-          setTimeout(() => setCopied(false), 2000)
-        } catch {
-          prompt("Copy this link:", shortLink)
-        } finally {
-          document.body.removeChild(input)
-        }
+        setLinkToCopy(shortLink)
       }
     } catch (error) {
       console.error("Failed to copy link:", error)
       const link = generateShareLink()
       const shortLink = await shortenUrl(link)
-      prompt("Copy this link:", shortLink)
+      setLinkToCopy(shortLink)
     } finally {
       setIsLoadingShare(false)
     }
@@ -246,39 +302,21 @@ export default function ReceiptSplitter() {
     try {
       setIsLoadingView(true)
       const link = generateViewLink()
-
       const shortLink = await shortenUrl(link)
 
-      const success = copyToClipboard(shortLink)
+      const success = await copyToClipboard(shortLink)
 
       if (success) {
         setViewCopied(true)
         setTimeout(() => setViewCopied(false), 2000)
       } else {
-        const input = document.createElement("input")
-        input.value = shortLink
-        input.style.position = "fixed"
-        input.style.opacity = "0"
-        input.style.pointerEvents = "none"
-        document.body.appendChild(input)
-        input.select()
-        input.setSelectionRange(0, 99999)
-
-        try {
-          document.execCommand("copy")
-          setViewCopied(true)
-          setTimeout(() => setViewCopied(false), 2000)
-        } catch {
-          prompt("Copy this link:", shortLink)
-        } finally {
-          document.body.removeChild(input)
-        }
+        setLinkToCopy(shortLink)
       }
     } catch (error) {
       console.error("Failed to copy view link:", error)
       const link = generateViewLink()
       const shortLink = await shortenUrl(link)
-      prompt("Copy this link:", shortLink)
+      setLinkToCopy(shortLink)
     } finally {
       setIsLoadingView(false)
     }
@@ -469,6 +507,22 @@ export default function ReceiptSplitter() {
             </Button>
           </div>
         </div>
+
+        {linkToCopy && (
+          <LinkCopyModal
+            link={linkToCopy}
+            onClose={() => setLinkToCopy(null)}
+            onCopySuccess={() => {
+              setCopied(true)
+              setViewCopied(true)
+              setTimeout(() => {
+                setCopied(false)
+                setViewCopied(false)
+                setLinkToCopy(null)
+              }, 2000)
+            }}
+          />
+        )}
 
         <div className="grid gap-6 md:grid-cols-2">
           {/* Left Column - People & Items */}
